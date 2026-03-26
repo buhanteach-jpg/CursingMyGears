@@ -1,0 +1,1187 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRIMSON DEPTHS</title>
+
+<style>
+body {
+  font-family: monospace;
+}
+
+#app {
+  max-width: 800px;
+  margin: auto;
+}
+
+/* OUTPUT */
+#output {
+  border: 1px solid black;
+  height: 400px;
+  overflow-y: auto;
+  padding: 5px;
+  margin-bottom: 10px;
+}
+
+.line {
+  white-space: pre-wrap;
+}
+
+/* HUD */
+#hud {
+  display: none;
+  margin-bottom: 10px;
+}
+
+#hud.active {
+  display: block;
+}
+
+/* BUTTONS */
+#buttons {
+  margin-bottom: 10px;
+}
+
+.btn {
+  margin: 2px;
+  padding: 4px 8px;
+}
+
+/* INPUT */
+#input-area {
+  display: none;
+  margin-top: 5px;
+}
+
+#input-area.active {
+  display: block;
+}
+
+#text-input {
+  width: 70%;
+}
+</style>
+</head>
+
+<body>
+<div id="app">
+
+  <div id="hud">
+  <div>HP: <span id="hud-hp"></span></div>
+  <div style="background:#222; width:100%; height:10px;">
+    <div id="hud-hp-bar" style="background:red; height:10px; width:100%;"></div>
+  </div>
+  <div>Floor: <span id="hud-floor"></span></div>
+  <div>Level: <span id="hud-lvl"></span></div>
+  <div>STR: <span id="hud-str"></span></div>
+  <div>AGI: <span id="hud-agi"></span></div>
+  <div>ARC: <span id="hud-arc"></span></div>
+  <div>ARMOR: <span id="hud-arm"></span></div>
+  <div>Gold: <span id="hud-gold"></span></div>
+  <div id="hud-effects"></div>
+</div>
+
+  <div id="output">
+    <div id="out"></div>
+  </div>
+
+  <div id="buttons"></div>
+
+  <div id="input-area">
+    <input id="text-input" type="text">
+    <button id="submit-btn">Enter</button>
+  </div>
+
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  CRIMSON DEPTHS — Browser Port
+// ═══════════════════════════════════════════════════════════
+
+// ─── RNG ───────────────────────────────────────────────────
+const rnd = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+const rndF = () => Math.random();
+const choice = arr => arr[Math.floor(Math.random() * arr.length)];
+const weighted = (items, weights) => {
+  const total = weights.reduce((a,b)=>a+b,0);
+  let r = Math.random()*total;
+  for(let i=0;i<items.length;i++){r-=weights[i];if(r<=0)return items[i];}
+  return items[items.length-1];
+};
+
+// ─── OUTPUT HELPERS ────────────────────────────────────────
+const out = document.getElementById('out');
+const outputDiv = document.getElementById('output');
+
+function print(text='', cls='') {
+  const lines = String(text).split('\n');
+  for (const line of lines) {
+    const el = document.createElement('div');
+    el.className = 'line' + (cls ? ' line-'+cls : '');
+    el.textContent = line;
+    out.appendChild(el);
+  }
+  outputDiv.scrollTop = outputDiv.scrollHeight;
+}
+function printRed(t)    { print(t,'red'); }
+function printGold(t)   { print(t,'gold'); }
+function printGreen(t)  { print(t,'green'); }
+function printBlue(t)   { print(t,'blue'); }
+function printPurple(t) { print(t,'purple'); }
+function printDim(t)    { print(t,'dim'); }
+function printBright(t) { print(t,'bright'); }
+function printBoss(t)   { print(t,'boss'); }
+function printTitle(t)  { print(t,'title'); }
+function hr() { printDim('  ─────────────────────────────────────────────────'); }
+
+function clearOutput() { out.innerHTML = ''; }
+
+function hpBar(hp, max, len=16) {
+  const filled = Math.round((hp/max)*len);
+  return '█'.repeat(Math.max(0,filled)) + '░'.repeat(Math.max(0,len-filled));
+}
+
+// ─── UI STATE MACHINE ──────────────────────────────────────
+let inputCallback = null;
+
+function setButtons(defs) {
+  const container = document.getElementById('buttons');
+  container.innerHTML = '';
+  for (const d of defs) {
+    const btn = document.createElement('button');
+    btn.className = 'btn' + (d.cls ? ' btn-'+d.cls : '');
+    btn.textContent = d.label;
+    if (d.disabled) btn.classList.add('btn-disabled');
+    btn.addEventListener('click', () => d.action());
+    container.appendChild(btn);
+  }
+}
+
+function setInput(placeholder, cb) {
+  const area = document.getElementById('input-area');
+  const inp = document.getElementById('text-input');
+  area.classList.add('active');
+  inp.placeholder = placeholder || 'Enter...';
+  inp.value = '';
+  inp.focus();
+  inputCallback = cb;
+}
+
+function clearInput() {
+  const area = document.getElementById('input-area');
+  area.classList.remove('active');
+  inputCallback = null;
+}
+
+document.getElementById('submit-btn').addEventListener('click', () => {
+  const val = document.getElementById('text-input').value.trim();
+  if (inputCallback) { const cb = inputCallback; inputCallback = null; cb(val); }
+});
+document.getElementById('text-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const val = e.target.value.trim();
+    if (inputCallback) { const cb = inputCallback; inputCallback = null; cb(val); }
+  }
+});
+
+function openCheatBox() {
+  print(`\n  ── ??? ───────────────────────────────`, 'purple');
+  print(`  Enter something...`, 'dim');
+
+  setInput('...', val => {
+    const cmd = val.trim().toLowerCase();
+    clearInput();
+
+    if (cmd === 'mark') {
+      G.player.max_hp = 9999;
+      G.player.hp = 9999;
+      print(`  HP overridden.`, 'green');
+    } 
+    else if (cmd === 'onepunch') {
+      G.player._cheat_dmg = 9999;
+      print(`  Damage overridden.`, 'green');
+    } 
+    else if (cmd === 'tellmeabout') {
+      print(`  ...you shouldn't have asked.`, 'red');
+      setButtons([{
+        label:'⚔ Continue',
+        action(){ startCombat(getMrC(), true); }
+      }]);
+      return;
+    } 
+    else {
+      print(`  lock in`, 'dim');
+    }
+
+    updateHUD();
+    setButtons([{label:'Continue →', action: betweenFloors}]);
+  });
+}
+
+function updateHUD() {
+  if (!G.player) return;
+  const p = G.player;
+  const hud = document.getElementById('hud');
+  hud.classList.add('active');
+  document.getElementById('hud-hp').textContent = `${p.hp}/${p.max_hp}`;
+  document.getElementById('hud-hp-bar').style.width = Math.max(0,(p.hp/p.max_hp)*100)+'%';
+  document.getElementById('hud-floor').textContent = G.floor;
+  document.getElementById('hud-lvl').textContent = p.level;
+  document.getElementById('hud-str').textContent = p.strength;
+  document.getElementById('hud-agi').textContent = p.agility;
+  document.getElementById('hud-arc').textContent = p.arcane;
+  document.getElementById('hud-arm').textContent = p.armor;
+  document.getElementById('hud-gold').textContent = p.gold;
+  const ef = document.getElementById('hud-effects');
+  ef.innerHTML = p.status_effects.map(s=>`<span class="status-tag status-${s}">${s}</span>`).join('');
+}
+
+// ─── GAME DATA ─────────────────────────────────────────────
+
+// ITEMS
+const ITEMS = {
+  "Bandage": {
+    name:"Bandage", desc:"Heals 20 HP, cures Bleeding and HIV. Same shit.", type:"consumable", value:5,
+    use(p){ const h=heal(p,20); p.status_effects=p.status_effects.filter(e=>e!=="Bleeding"); return `  🩹 Bandage applied. Healed ${h} HP. HIV cured. Gucci Third leg might not catch you this time.`; }
+  },
+  "Blood Vial": {
+    name:"Blood Vial", desc:"Heals 35 HP. This MIGHT be period blood ngl...", type:"consumable", value:12,
+    use(p){ const h=heal(p,35); return `  🩸 Blood Vial consumed. Healed ${h} HP.`; }
+  },
+  "Fent": {
+    name:"Fent", desc:"+3 STR, +2 AGI. Glory to Benjamin Netanyahu.", type:"consumable", value:10,
+    use(p){ p.strength+=3;p.agility+=2; return `  💊 Fent taken. +3 STR, +2 AGI. TS WAS LACED NGA`; }
+  },
+  "Holy Water": {
+    name:"Holy Water", desc:"Clears all status effects + 10 HP.", type:"consumable", value:15,
+    use(p){ p.status_effects=[];const h=heal(p,10); return `  💧 Holy Water! All effects cleansed. PRAISE THE LORD. Healed ${h} HP. Yes I need to glaze god bro sybau.`; }
+  },
+  "Sus Tonic": {
+    name:"Sus Tonic", desc:"+4 ARCANE. Andrew's favorite.", type:"consumable", value:10,
+    use(p){ p.arcane+=4; return `  🌑 Sus Tonic drunk. +4 ARCANE. goon juice`; }
+  },
+  "Smelling Salts": {
+    name:"Smelling Salts", desc:"Cures Stunned, heals 5 HP.", type:"consumable", value:8,
+    use(p){ p.status_effects=p.status_effects.filter(e=>e!=="Stunned");const h=heal(p,5); return `  💨 Smelling Salts — Stunned cured. Healed ${h} HP. Nose kinda burns.`; }
+  },
+  "Unknown Pill": {
+    name:"Unknown Pill", desc:"50/50. I DONT HAVE REPANTANCE NIGGA CAIN IS ASS", type:"consumable", value:6,
+    use(p){
+      if(Math.random()<0.5){p.strength+=3;const h=heal(p,rnd(5,15));return `  💊 Unknown Pill: POWER! +3 STR, healed ${h} HP. Good pill. IM PLAYING SAMSON`;}
+      else{p.hp=Math.max(1,p.hp-10);p.agility=Math.max(1,p.agility-2);return `  💊 Unknown Pill: SHOT SPEED DOWN. -10 HP, -2 AGI. CAIN I LOVE YOU YOU MAKE ME SO LUCKY YAY YAY YAY YAY YAY`;}
+    }
+  },
+  "Iron Shards": {
+    name:"Iron Shards", desc:"+2 Armor permanently.", type:"relic", value:18,
+    use(p){ p.armor+=2; return `  🔩 Iron Shards sewn into armor. +2 Armor. Smart boy.`; }
+  },
+  "Nigerian Charm": {
+    name:"Nigerian Charm", desc:"+2 ARC, +5 Max HP. fashashashaha", type:"relic", value:20,
+    use(p){ p.arcane+=2;p.max_hp+=5;p.hp=Math.min(p.hp+5,p.max_hp); return `  🧿 Nigerian Charm equipped. +2 ARC, +5 Max HP. Thank you priest`; }
+  },
+  "Literature": {
+    name:"Literature", desc:"Lose 10 HP, gain +6 ARCANE.", type:"relic", value:25,
+    use(p){ p.hp=Math.max(1,p.hp-10);p.arcane+=6; return `  📖 Literature read (Circe). Lost 10 HP — gained +6 ARCANE. kinda mid.`; }
+  },
+  "Cosmilite Chunk": {
+    name:"Cosmilite Chunk", desc:"+4 STR +2 ARMOR. where did you get this nigga", type:"relic", value:28,
+    use(p){ p.strength+=4;p.armor+=2; return `  🪨 Cosmilite Ore chunk. +4 STR +2 ARMOR. diamond pickaxe does not get this bro`; }
+  },
+  "Netanyahu's IOU": {
+    name:"Netanyahu's IOU", desc:"Redeemable for gold.", type:"consumable", value:1,
+    use(p){ const g=rnd(0,100);p.gold+=g; return g===0?`  📄 Netanyahu's IOU redeemed. Eh no.`:`  📄 Netanyahu's IOU redeemed. He paid you ${g}g. Big Yahu got your back`; }
+  },
+  "Packet Tracer CD": {
+    name:"Packet Tracer CD", desc:"+5 ARC +2 STR write up for the router", type:"relic", value:20,
+    use(p){ p.arcane+=5;p.strength+=2; return `  💿 Packet Tracer Installation CD used as a weapon somehow. +5 ARC +2 STR. Mr C would be proud. BUT its not latest version so go fuck yourself`; }
+  },
+  "Justin Lin's Script": {
+    name:"Justin Lin's Script", desc:"ts ass", type:"consumable", value:3,
+    use(p){
+      const r=Math.random();
+      if(r<0.2){p.strength+=6;return `  confession: this item was made to be a super good item that would make you feel like you won the lottery. +6 STR. Justin Lin did NOT help with this`;}
+      else if(r<0.5){p.hp=Math.max(1,p.hp-15);return `  fuck you`;}
+      else{const g=rnd(5,15);p.gold=Math.max(0,p.gold-g);return `  He drives too much gotta pay for gas (-${g}g)`;}
+    }
+  },
+  "Silver Dagger": {
+    name:"Silver Dagger", desc:"+3 STR. an actual weapon", type:"weapon", value:22,
+    use(p){ p.strength+=3; return `  🗡  Silver Dagger equipped. +3 STR. roadman breathing 1st form`; }
+  },
+  "Rusted Shield": {
+    name:"Rusted Shield", desc:"+3 Armor.", type:"armor", value:15,
+    use(p){ p.armor+=3; return `  🛡  Rusted Shield strapped on. +3 Armor. Justin Lin would've given this to the wrong character.`; }
+  },
+  "Mari's Tails Plushie": {
+    name:"Mari's Tails Plushie", desc:"Full heal, +20 Max HP, +3 AGI. history.", type:"relic", value:0,
+    use(p){ p.max_hp+=20;p.hp=p.max_hp;p.agility+=3; return `  🎀 Mari's Tails Plushie... fully healed. +20 Max HP, +3 AGI. Bad blood... but useful. Don't ask about emily.`; }
+  },
+};
+const ALL_ITEMS = Object.values(ITEMS);
+
+function randomLoot(n=1, excludeSecret=true) {
+  let pool = excludeSecret ? ALL_ITEMS.filter(i=>i.name!=="Mari's Tails Plushie") : ALL_ITEMS;
+  pool = [...pool];
+  const result=[];
+  for(let i=0;i<Math.min(n,pool.length);i++){
+    const idx=Math.floor(Math.random()*pool.length);
+    result.push({...pool.splice(idx,1)[0]});
+  }
+  return result;
+}
+function shopStock() {
+  let pool = ALL_ITEMS.filter(i=>i.value>0 && i.name!=="Mari's Tails Plushie");
+  pool = [...pool];
+  const result=[];
+  for(let i=0;i<Math.min(4,pool.length);i++){
+    const idx=Math.floor(Math.random()*pool.length);
+    result.push({...pool.splice(idx,1)[0]});
+  }
+  return result;
+}
+
+// ─── CHARACTER / SKILLS ────────────────────────────────────
+function heal(p, amount) {
+  const h = Math.min(amount, p.max_hp - p.hp);
+  p.hp += h; return h;
+}
+
+function makePl(name, cls, data) {
+  return {name,class_name:cls,...data,level:1,xp:0,xp_next:100,gold:10,status_effects:[],inventory:[]};
+}
+
+const SKILL_FNS = {
+  silver_shot(u,t){ const dmg=u.strength*2+rnd(5,15);const d=takeDmg(t,dmg);return `  💥 Silver Blick! ${d} damage. thank you himeros.`; },
+  holy_ward(u,t){ u.armor+=3;return `  🛡  Von's Blessing! +3 Armor. He is truly looking down on us.`; },
+  heretic_smite(u,t){ const dmg=u.strength*3;const d=takeDmg(t,dmg);return `  ✝  Netanyahu Beam! ${d} radiant damage. Big Yahu's endorsed this move personally.`; },
+  cauterize(u,t){ const h=heal(u,15+u.arcane);u.status_effects=u.status_effects.filter(e=>e!=="Bleeding");return `  🩹 Condom used. Healed ${h} HP. HIV cured. ts probably used ngl.`; },
+  plague_mist(u,t){ const dmg=u.arcane+rnd(3,10);const d=takeDmg(t,dmg);if(!t.status_effects.includes("Plague"))t.status_effects.push("Plague");return `  🧪 Mustard Gas! ${d} damage. ${t.name} is Plagued. this is like bleach n smth else i forgot.`; },
+  bleed_elixir(u,t){ const h=heal(u,u.arcane*2);return `  🍷 Blood Elixir (nasty)! Healed ${h} HP. I DONT WANT TO KEEP WRITING THIS WHY`; },
+  cursed_strike(u,t){ u.hp=Math.max(1,u.hp-5);const dmg=u.strength*2+u.arcane+rnd(1,12);const d=takeDmg(t,dmg);if(!t.status_effects.includes("Cursed"))t.status_effects.push("Cursed");return `  ⚔  Cursed Dild! Sacrificed 5 dignity to deal ${d} damage. ${t.name} is Cursed.`; },
+  undying_rage(u,t){ u.strength+=4;return `  💢 IMA NEED MY MONEY NGA! +4 STR. TT broke ahh.`; },
+  void_bolt(u,t){ const dmg=u.arcane*3+rnd(4,14);const d=takeDmg(t,dmg);return `  🌀 Gas Beam! ${d} arcane damage. this is like 6 gallons bro cough up 30.`; },
+  soul_drain(u,t){ const dmg=u.arcane*2;const d=takeDmg(t,dmg);const h=heal(u,Math.floor(d/2));return `  💜 MAX Drain (thank you Trump)! Dealt ${d}, healed ${h}. Shah sampled this at lunch.`; },
+  rot_grasp(u,t){ const dmg=u.strength+rnd(2,8);const d=takeDmg(t,dmg);if(!t.status_effects.includes("Rotting"))t.status_effects.push("Rotting");return ` Rot Grasp! ${d} necrotic damage. ${t.name} begins to Rot. Dih`; },
+  risen_toughness(u,t){ u.max_hp+=5;u.hp=Math.min(u.hp+5,u.max_hp);return `  🦴 Risen Toughness! +5 Max HP. Undead resilience.`; },
+  improvise(u,t){ const c=choice(["attack","dodge","item"]);if(c==="attack"){const dmg=u.strength+rnd(1,20);const d=takeDmg(t,dmg);return `  🎲 Improvise! Found an opening — ${d} damage!`;}else if(c==="dodge"){u.agility+=2;return `  🎲 Improvise! Ducked behind cover. +2 AGI.`;}else{const h=heal(u,10);return `  🎲 Improvise! Patched a wound — healed ${h} HP.`;} },
+  scavenge(u,t){ const g=rnd(2,8);u.gold+=g;return `  🔍 Jewish Scent! Found ${g}g mid-combat. MORE TO ISREAL`; },
+  maris_whisper(u,t){ const r=Math.random();if(r<0.33){const dmg=u.arcane*4+rnd(10,25);const d=takeDmg(t,dmg);return `  🌸 Mari's Whisper... '${t.name}, I got this!' — ${d} damage.`;}else if(r<0.66){const h=heal(u,Math.floor(u.max_hp/3));return `  🌸 Mari's Whisper... You escaped layer 2. Healed ${h} HP.`;}else{u.strength+=5;u.arcane+=5;return `  🌸 Mari's Whisper... 'Heh, I'll lend you my strength kacchan! But just this one time~' +5 STR +5 ARC.`;} },
+  maris_lullaby(u,t){ if(!t.status_effects.includes("Stunned"))t.status_effects.push("Stunned");return `  🎵 Mari's Lullaby... ${t.name} hates this water fries beat. (Stunned)`; },
+};
+
+const CLASSES = {
+  "Witch Hunter":  { hp:70,  max_hp:70,  strength:14, agility:12, arcane:6,  armor:3, description:"Himeros.",
+    skills:[{name:"Silver Blick",desc:"Powerful shot.",fn:"silver_shot"},{name:"Von's Blessing",desc:"Temporarily raise your armor. such a saint",fn:"holy_ward"},{name:"Netanyahu Beam",desc:"Radiant burst. Big Yahu approved. with a 5000 year warranty.",fn:"heretic_smite"}] },
+  "Plague Doctor": { hp:60,  max_hp:60,  strength:8,  agility:9,  arcane:14, armor:2, description:"Not qualified. At all. Shah gave him his 'degree.' Calamitas respects the hustle.",
+    skills:[{name:"Mustard Gas",desc:"Poison cloud. Plagued. Wear a mask bro.",fn:"plague_mist"},{name:"Condom",desc:"Heals self, cures HIV.",fn:"cauterize"},{name:"Blood Elixir",desc:"Drink a vial. Disgusting. Heals HP.",fn:"bleed_elixir"}] },
+  "Cursed Knight": { hp:90,  max_hp:90,  strength:16, agility:7,  arcane:8,  armor:5, description:"Fallen warrior bound by a dark curse. Thank you VSCode.",
+    skills:[{name:"Cursed Dild",desc:"Sacrifice dignity for massive damage.",fn:"cursed_strike"},{name:"IMA NEED MY MONEY NGA",desc:"Surge of strength.",fn:"undying_rage"},{name:"Von's Blessing 2",desc:"He got you bro. Again.",fn:"holy_ward"}] },
+  "Occultist":     { hp:55,  max_hp:55,  strength:6,  agility:8,  arcane:18, armor:1, description:"I HATE GOD HE A BITCH. I LOVE BENJAMAN NETANYAHU GLORY TO ISREAL AND THE STEIN IS MY BEST MAN",
+    skills:[{name:"Gas Beam",desc:"$5 gas hose. Im sorry priest.",fn:"void_bolt"},{name:"MAX Drain (thanks Trump)",desc:"drains you. Andrew calls this 'networking.'",fn:"soul_drain"},{name:"Big Yahu's Endorsement",desc:"Von's Blessing but promised to you 5000 years ago.",fn:"holy_ward"}] },
+  "Revenant":      { hp:80,  max_hp:80,  strength:13, agility:6,  arcane:11, armor:4, description:"Undead warrior clinging to life through sheer hatred.",
+    skills:[{name:"Rot Grasp",desc:"Necrotic touch. Rots foes.",fn:"rot_grasp"},{name:"Soul Drain",desc:"Steal life. calamitas can drain me if ykyk",fn:"soul_drain"},{name:"Risen Toughness",desc:"+5 Max HP. Undead resilience.",fn:"risen_toughness"}] },
+  "Survivalist":   { hp:75,  max_hp:75,  strength:11, agility:15, arcane:4,  armor:2, description:"A drifter who thrives in chaos. Jew.",
+    skills:[{name:"Improvise",desc:"I made this move in like 40 seconds man idk if it works",fn:"improvise"},{name:"Jewish Scent",desc:"Find gold mid-combat. Master Jew",fn:"scavenge"},{name:"Cauterize",desc:"Field medicine. Praise DT",fn:"cauterize"}] },
+  "Mari":          { hp:65,  max_hp:65,  strength:10, agility:13, arcane:16, armor:2, description:"Fricken Packet yo. He doesn't talk much about where he came from. ate the Larp Larp no Mi and switched up on all his day 1s",
+    skills:[{name:"Mari's Whisper",desc:"Loading screen",fn:"maris_whisper"},{name:"Mari's Lullaby",desc:"Water fries on the beat yo",fn:"maris_lullaby"},{name:"Soul Drain",desc:"STRAIGHT TEETH.",fn:"soul_drain"}] },
+};
+const CLASS_NAMES = ["Witch Hunter","Plague Doctor","Cursed Knight","Occultist","Revenant","Survivalist","??? (unlock with care)"];
+
+// ─── ENEMIES ───────────────────────────────────────────────
+function takeDmg(char, amount) {
+  const reduced = Math.max(0, amount - char.armor);
+  char.hp = Math.max(0, char.hp - reduced);
+  return reduced;
+}
+function enemyAttack(e) { return e.strength + rnd(1,8); }
+function makeEnemy(name,hp,strength,armor,xp,gold,desc,specialFn) {
+  return {name,hp,max_hp:hp,strength,armor,xp_reward:xp,gold_reward:gold,description:desc,specialFn,status_effects:[]};
+}
+
+// Special fns return message string or null
+const SPECIALS = {
+  bleed(e,p){ if(!p.status_effects.includes("Bleeding")){p.status_effects.push("Bleeding");return `  🩸 ${e.name} gives you HIV — you are FRIED (bleeding)`;} return null; },
+  curse(e,p){ if(!p.status_effects.includes("Cursed")){p.status_effects.push("Cursed");p.strength=Math.max(1,p.strength-2);return `  💀 ${e.name} uses Nigerian voodoo — you are Cursed! (-2 STR)`;} return null; },
+  drain(e,p){ const d=rnd(5,12);p.hp=Math.max(0,p.hp-d);e.hp=Math.min(e.max_hp,e.hp+d);return `  🌑 ${e.name} drains your life force! You lose ${d} somethinh......`; },
+  rot(e,p){ if(!p.status_effects.includes("Rotting")){p.status_effects.push("Rotting");return `  🪦 ${e.name}'s touch rots your flesh — Rotting! (like Ty's grades)`;} return null; },
+  stun(e,p){ if(!p.status_effects.includes("Stunned")){p.status_effects.push("Stunned");return `  💫 ${e.name} bashes your skull — you got CTE! (Stunned)`;} return null; },
+  plague(e,p){ if(!p.status_effects.includes("Plague")){p.status_effects.push("Plague");return `  🧪 ${e.name} coughs on you — Plagued! wear a mask bro.`;} return null; },
+  enrage(e,p){ e.strength+=3;return `  😡 ${e.name} JUST HIT THE JACKPOT!! (+3 STR) HEY HEY HEY HEY HEY`; },
+  shah(e,p){ const g=rnd(3,10);p.gold=Math.max(0,p.gold-g);return choice([`  💸 ${e.name} asks to borrow ${g}g. You'll never see it again.`,`  🤲 ${e.name} SHUT UP ABOUT DELTARUNE (-${g}g)`,`  👟 ${e.name} dih -${g}g.`,`  🍔 ${e.name} idk bruh this the shah event pool. its ALL gold stolen. (-${g}g)`]); },
+  justin_lin(e,p){
+    const moves=[
+      ()=>{p.armor=Math.max(0,p.armor-2);return "  Justin Lin makes a random noise.";},
+      ()=>{p.hp=Math.max(1,p.hp-15);return "  J Lin fucking falls in front of Mr C.";},
+      ()=>{if(!p.status_effects.includes("Stunned"))p.status_effects.push("Stunned");return "  SHUT THE FUCK UP JUSTIN";},
+      ()=>{return "  JUSTIN KY- oh its JT. Hi JT!";},
+      ()=>{p.agility=Math.max(1,p.agility-3);return "  Js goon bro.";},
+    ];
+    return choice(moves)();
+  },
+  calamity(e,p){
+    const moves=[
+      ()=>{p.hp=Math.max(1,p.hp-25);return "  ☀️  Providence bullet hell. NIGGA YOU SUCK AT DODGING KILL YOURSELF";},
+      ()=>{p.strength=Math.max(1,p.strength-3);p.agility=Math.max(1,p.agility-3);return "  random named move I fuckinh forgot nigga.";},
+      ()=>{p.hp=Math.max(1,p.hp-30);return "  🌌 Devourer of Gods laser. -30 HP. why is this in the fucking game?";},
+      ()=>{if(!p.status_effects.includes("Cursed"))p.status_effects.push("Cursed");return "  👁  Im cracking calamitas";},
+      ()=>{p.hp=Math.max(1,p.hp-20);return "  🌊 Aquatic Scourge jumps out of nowhere. -20 HP. Wrong biome bro.";},
+    ];
+    return choice(moves)();
+  },
+  isaac(e,p){
+    const moves=[
+      ()=>{p.hp=Math.max(1,p.hp-20);return "  👟 MOM'S FOOT. -20 HP. You know what you did.";},
+      ()=>{if(!p.status_effects.includes("Stunned"))p.status_effects.push("Stunned");p.arcane=Math.max(1,p.arcane-3);return "  🌀 Delirium phase shifts. Stunned and confused. -3 ARC.";},
+      ()=>{p.hp=Math.max(1,p.hp-18);return "  💙 HUSH fires a laser. -18 HP. This is floor 1. How did Hush get here.";},
+      ()=>{p.armor=Math.max(0,p.armor-4);return "  idk bruh i js added this move to make the fight more interesting. -4 ARMOR.";},
+      ()=>{return "  🔑 Satan door rattles. Nothing happens. You need both keys still. Get a real job.";},
+      ()=>{const g=rnd(5,12);p.gold=Math.max(0,p.gold-g);return `  🪙 Greed Mode activated. Coins stolen. Everyone hates JEW Mode. (-${g}g)`;},
+      ()=>{if(!p.status_effects.includes("Bleeding"))p.status_effects.push("Bleeding");return "  ✂️  Scissors. ???. You are Bleeding now. 'why the fuck is this in the game sinai?'";},
+    ];
+    return choice(moves)();
+  },
+  packet_tracer(e,p){
+    const moves=[
+      ()=>{return "  🖥  Mr C opens Packet Tracer. you lose your will to live. (like starting Calamity Master Death Mode)";},
+      ()=>{p.strength=Math.max(1,p.strength-3);return "  📋 12 labs assigned mid-combat. Extension for the 3rd time in a row... (-3 STR)";},
+      ()=>{if(!p.status_effects.includes("Stunned"))p.status_effects.push("Stunned");return "  🪑 Mr C yaps for 20 minutes about OSPF. (Stunned)";},
+      ()=>{p.arcane=Math.max(1,p.arcane-4);return "  🧮 REDUX labs. what the fuck are we doing. Your brain melts. (-4 ARC)";},
+      ()=>{p.agility=Math.max(1,p.agility-3);return "  📊 90 acronyms. Your Getting a 62. (-3 AGI)";},
+      ()=>{p.armor=Math.max(0,p.armor-2);return "  🗣  Mr C says 'bad teacher!' The secondhand embarrassment is physical. (-2 ARMOR)";},
+      ()=>{return "  🎤 'Who can tell me about...' shitty charades wont save you this time.";},
+      ()=>{p.hp=Math.max(1,p.hp-20);return "  📉 Missed ipv6 unicast-routing. Why 70 points? (-20 HP direct)";},
+      ()=>{if(!p.status_effects.includes("Stunned"))p.status_effects.push("Stunned");return "  📺 A 2009 lab walkthrough video plays. You are Stunned by how shit the quality is";},
+      ()=>{p.arcane=Math.max(1,p.arcane-2);return "  📝 'This WILL be on the test.' It was not. (-2 ARC)";},
+      ()=>{p.gold=Math.max(0,p.gold-8);return "  📁 Mr C cannot find your submission. You lose 8g re-submitting on paper.";},
+    ];
+    return choice(moves)();
+  }
+};
+
+function useSpecial(e, p) {
+  if (e.specialFn && Math.random() < 0.30) return e.specialFn(e, p);
+  return null;
+}
+
+function getEnemy(floor) {
+  const tier = Math.min(3, Math.max(1, Math.floor(floor/3)+1));
+  const tiers = {
+    1:[
+      ()=>makeEnemy("Shambling Corpse",30,7,0,25,rnd(1,4),"A lurching undead, reeking of first period PE. Probably Shah. Or perhaps Peter.",SPECIALS.rot),
+      ()=>makeEnemy("Plague Rat",20,5,0,15,rnd(0,2),"A bloated rat the size of a guppy. Does not have 9 lives. Has maybe 1.5.",SPECIALS.plague),
+      ()=>makeEnemy("Hollow Wraith",25,8,1,20,rnd(1,3),"A translucent specter. Less scary than it looks. Red chests are scarier gang.",SPECIALS.drain),
+      ()=>makeEnemy("Feral Cultist",35,9,1,30,rnd(2,6),"Satanist. I FUCKING HATE THIS NIG-",SPECIALS.bleed),
+      ()=>makeEnemy("Shah's Cousin",28,6,0,20,0,"Asks to borrow gold every round. praises Benjamin Netanyahu",SPECIALS.shah),
+    ],
+    2:[
+      ()=>makeEnemy("Blood Hound",50,12,1,45,rnd(3,7),"FETCH ME THEIR SOULS (cutely). That one dog in Undertale MIGHT be stronger than this fraud.",SPECIALS.bleed),
+      ()=>makeEnemy("Grave Witch",45,10,2,50,rnd(4,8),"Must be Haitian. Probably sells Nigerian charms on the side.",SPECIALS.curse),
+      ()=>makeEnemy("Rotting Titan",65,14,3,60,rnd(5,10),"An enormous undead hulk. Not goonable. Peter would crack though.",SPECIALS.stun),
+      ()=>makeEnemy("Shadow Stalker",40,13,2,55,rnd(3,8),"Helps women get home safely at night.",SPECIALS.drain),
+      ()=>makeEnemy("Andrew (Shah's boyfriend)",42,8,0,40,0,"HE GOT A 59 ON THE 5-6 TEST",SPECIALS.shah),
+    ],
+    3:[
+      ()=>makeEnemy("Bone Colossus",90,18,5,100,rnd(8,15),"A cathedral of fused skeleton. Not as white as Preston",SPECIALS.enrage),
+      ()=>makeEnemy("The Plague Bishop",80,15,4,110,rnd(10,18),"He is NOT my bishop. THIS NIGGAS LOOTPOOL IS SO ASS I WANTT TO KMS",SPECIALS.plague),
+      ()=>makeEnemy("Voidborn Revenant",85,17,4,115,rnd(8,16),"A normal guy with dihpression. Yall thought this was gonna be a cool monster but no fuck you.",SPECIALS.drain),
+      ()=>makeEnemy("Nissan Lin",70,15,3,90,rnd(6,12),"Nissan Ultima.",SPECIALS.justin_lin),
+    ],
+  };
+  return choice(tiers[tier])();
+}
+
+function getBoss() {
+  const bosses = [
+    ()=>makeEnemy("The Pale Sovereign",150,22,6,300,50,"An ancient vampire lord. Not as cool as DIO. Still pretty cool. Would not date his son.",SPECIALS.drain),
+    ()=>makeEnemy("The Wretched God",180,25,5,350,60,"Mom if she skipped leg day. Providence knockoff. js put the fries in the bag vro",SPECIALS.calamity),
+    ()=>makeEnemy("Magistra of Plagues",140,19,7,320,55,"The nigga who ate that stupid ass lunch concoction you made in 4th grade. How is he alive?",SPECIALS.plague),
+    ()=>makeEnemy("Peter",1,50,0,67,rnd(100,150),"It's a Black man. His name is Peter. He's a bum. Ty's boyfriend",SPECIALS.plague),
+    ()=>makeEnemy("Delirium (Budget Version)",160,20,4,330,55,"ngl gang I just really want to play this game with the dlcs",SPECIALS.isaac),
+    ()=>makeEnemy("Shah",100,18,3,280,rnd(40,80),"cornball",SPECIALS.shah),
+    ()=>makeEnemy("Zoro",170,23,5,340,rnd(45,65),"Why is he even here bro. He has nothing to do with this. He just showed up one day.",SPECIALS.calamity),
+  ];
+  return choice(bosses)();
+}
+
+function getMrC() {
+  return makeEnemy("Mr C",999,50,20,10000,rnd(100,150),"The big Mr C. He MIGHT digress. He assigns 12 labs. He doesnt like Justin Lin.",SPECIALS.packet_tracer);
+}
+
+// ─── STATUS EFFECTS ────────────────────────────────────────
+function applyStatusEffects(char) {
+  const msgs = [];
+  for (const ef of [...char.status_effects]) {
+    if (ef==="Bleeding")  { const d=rnd(2,5); char.hp=Math.max(0,char.hp-d); msgs.push(`  🩸 ${char.name} bleeds for ${d} damage.`); }
+    if (ef==="Plague")    { const d=rnd(3,7); char.hp=Math.max(0,char.hp-d); msgs.push(`  🧪 Plague wracks ${char.name} for ${d} damage.`); }
+    if (ef==="Rotting")   { char.armor=Math.max(0,char.armor-1); msgs.push(`  🪦 ${char.name}'s flesh rots — armor reduced.`); }
+    if (ef==="Cursed")    { /* passive */ }
+    if (ef==="Stunned")   { msgs.push(`  💫 ${char.name} is Stunned and loses their turn!`); }
+  }
+  return msgs;
+}
+
+// ─── GAME STATE ────────────────────────────────────────────
+const G = {
+  player: null,
+  floor: 1,
+  phase: 'title',  // title | menu | charname | charclass | floor_enter | event | combat | between | gameover | victory
+  combat_state: null,
+  pending_after: null, // callback after continue
+};
+
+// ─── TITLE ─────────────────────────────────────────────────
+function showTitle() {
+  clearOutput();
+  G.phase = 'title';
+  setButtons([]);
+  clearInput();
+  print(`
+  ██████╗██████╗ ██╗███╗   ███╗███████╗ ██████╗ ███╗   ██╗
+ ██╔════╝██╔══██╗██║████╗ ████║██╔════╝██╔═══██╗████╗  ██║
+ ██║     ██████╔╝██║██╔████╔██║███████╗██║   ██║██╔██╗ ██║
+ ██║     ██╔══██╗██║██║╚██╔╝██║╚════██║██║   ██║██║╚██╗██║
+ ╚██████╗██║  ██║██║██║ ╚═╝ ██║███████║╚██████╔╝██║ ╚████║
+  ╚═════╝╚═╝  ╚═╝╚═╝╚═╝     ╚═╝╚══════╝ ╚═════╝ ╚═╝  ╚═══╝`, 'red');
+  print(`                    D E P T H S`, 'gold');
+  print(`  ─────────────────────────────────────────────────────────`, 'dim');
+  print(`  A gothic horror roguelike. this is way edgier than it actually is...`, 'dim');
+  print();
+  setButtons([
+    {label:'▶  New Game', cls:'primary', action: startNewGame},
+    {label:'?  How to Play', action: showHowToPlay},
+  ]);
+}
+
+function showHowToPlay() {
+  clearOutput();
+  print(`  ── HOW TO PLAY (read ts nga) ──────────────────────────────`,'gold');
+  print();
+  print(`  You will descend through cursed floors, each more dangerous`);
+  print(`  than the last. On each floor you will encounter:`);
+  print();
+  print(`    ⚔  Combat    — pokemon style`);
+  print(`    💀 Elite     — a harder enemy with better shit`);
+  print(`    👑 Boss      — every 5th floor, a politician waits.`);
+  print(`    🛒 Shop      — we know you broke nga 😂`);
+  print(`    🔥 Rest Site — fortnite campfire`);
+  print(`    📦 Loot      — E Coli or Sacred Heart`);
+  print();
+  print(`  In combat, you may:`);
+  print(`    Attack      — standard strike`);
+  print(`    Use a Skill — class ability`);
+  print(`    Use an Item — consumables from your inventory DONT HOARD`);
+  print(`    Flee        — black special`);
+  print();
+  print(`  Status Effects:`);
+  print(`    Bleeding  — lose HP each round`);
+  print(`    Plague    — lose HP each round (worse no shit)`);
+  print(`    Cursed    — -2 STR`);
+  print(`    Rotting   — lose 1 Armor per round (ts lwk the worst)`);
+  print(`    Stunned   — lose your next turn (cucked)`);
+  print();
+  print(`  Reach floor 10 to face the final boss and escape.`);
+  print(`  Or die trying. (dih)`);
+  setButtons([{label:'← Back', action: showTitle}]);
+}
+
+// ─── CHARACTER CREATION ────────────────────────────────────
+function startNewGame() {
+  clearOutput();
+  G.player = null;
+  G.floor = 1;
+  print(`\n  ── CHARACTER CREATION ──────────────────────────────`, 'gold');
+  print(`\n  Enter your name, traveller:`);
+  setButtons([]);
+  setInput('Your name...', name => {
+    if (!name) name = 'Bitch';
+    G._pendingName = name;
+    chooseClass();
+  });
+}
+
+function chooseClass() {
+  clearOutput();
+  print(`  ── CHOOSE YOUR CLASS ───────────────────────────────`, 'gold');
+  print();
+  CLASS_NAMES.forEach((c,i) => print(`    [${i+1}] ${c}`));
+  print();
+  const btns = CLASS_NAMES.slice(0,6).map((c,i)=>({
+    label:`[${i+1}] ${c}`,
+    action(){ confirmClass(c); }
+  }));
+  btns.push({label:`[7] ???`, action(){
+    clearOutput();
+    print(`  ── UNLOCK REQUIRED ─────────────────────────────────`, 'dim');
+    print(`  You sense something hidden beyond this door.`, 'dim');
+    print(`  Enter the unlock word:`, 'dim');
+    setButtons([{label:'← Back', action: chooseClass}]);
+    setInput('Unlock word...', val => {
+      if (val.trim().toUpperCase() === 'MARI') {
+        confirmClass('Mari', true);
+      } else {
+        print(`  ...nothing happens.`, 'dim');
+        setButtons([{label:'← Back', action: chooseClass}]);
+      }
+    });
+  }});
+  setButtons(btns);
+  clearInput();
+}
+
+function confirmClass(cls, secret=false) {
+  if (cls === '??? (unlock with care)') {
+    print(`  You don't know the unlock word yet nga.`,'red');
+    return;
+  }
+  const data = CLASSES[cls];
+  G.player = {
+    name: G._pendingName,
+    class_name: cls,
+    hp: data.hp, max_hp: data.max_hp,
+    strength: data.strength, agility: data.agility,
+    arcane: data.arcane, armor: data.armor,
+    description: data.description,
+    skills: data.skills.map(s=>({...s})),
+    level:1, xp:0, xp_next:100, gold:10,
+    status_effects:[], inventory:[]
+  };
+
+  clearOutput();
+  if (secret) {
+    print(`\n  ...the name hangs in the air.`, 'dim');
+    print(`  A Larper approaches.`, 'dim');
+    print(`  "Heh... You called?" he says nonchalantly.`, 'purple');
+  }
+  print(`\n  You are ${G.player.name}, the ${G.player.class_name}.`, 'gold');
+  print(`  "${G.player.description}"`, 'dim');
+  print();
+
+  // Starting item
+  const loot = randomLoot(1);
+  if (loot.length) {
+    const item = loot[0];
+    G.player.inventory.push(item);
+    print(`  You begin with: ${item.name} — ${item.desc}`, 'green');
+  }
+  print();
+  updateHUD();
+  setButtons([{label:'Begin Descent ▼', cls:'primary', action: runFloor}]);
+  clearInput();
+}
+
+// ─── FLOOR DESCRIPTIONS ───────────────────────────────────
+const FLOOR_DESCS = [
+  "The cobblestones are slick with old blood.",
+  "Torchlight flickers. Something breathes in the dark.",
+  "The walls weep black ichor.",
+  "Bones crunch beneath your feet.",
+  "A distant choir sings hymns in reverse.",
+  "The air tastes of sulfur and rot.",
+  "You hear your own heartbeat echoed back.",
+  "The shadows move before you do.",
+  "A child's laughter echoes ahead.",
+  "The deeper you go, the warmer it gets.",
+  "A note on the wall reads: 'Prepare for acronym test 8'",
+  "wtf is this floor made of",
+];
+
+// ─── FLOOR ENTRY ──────────────────────────────────────────
+function runFloor() {
+  updateHUD();
+  clearOutput();
+  const desc = FLOOR_DESCS[(G.floor-1) % FLOOR_DESCS.length];
+  print(`\n  ╔══ FLOOR ${G.floor} ═══════════════════════════════╗`, 'red');
+  print(`  ║  ${desc.padEnd(46)}║`, 'dim');
+  print(`  ╚══════════════════════════════════════════════════╝`, 'red');
+  printPlayerStatus();
+  print();
+
+  if (G.floor % 5 === 0) {
+    // Boss floor
+    const bossIntros = [
+      "  The floor trembles. A boss approaches.",
+      "  The air goes colder.",
+      "  Something massive stirs ahead. (dih)",
+      "  Good luck.",
+      "  The darkness thickens. Even the rats fled this floor.",
+    ];
+    print(choice(bossIntros), 'red');
+    print(`  BOSS FLOOR ${G.floor}. Go off.\n`, 'boss');
+    setButtons([{label:'⚔ Face the Boss', cls:'primary', action(){
+      let boss;
+      if(G.floor===10) boss = getMrC();
+      else boss = getBoss();
+      startCombat(boss, true);
+    }}]);
+  } else {
+    const event = weighted(
+      ['combat','elite','shop','rest','loot'],
+      [40,15,15,15,15]
+    );
+    showEventChoice(event);
+  }
+}
+
+function showEventChoice(event) {
+  const icons = {combat:'⚔',elite:'💀',shop:'🛒',rest:'🔥',loot:'📦'};
+  const labels = {combat:'Combat encounter',elite:'Elite enemy ahead',shop:'Shop',rest:'Rest site',loot:'Abandoned cache'};
+  print(`  You sense: ${icons[event]} ${labels[event]}`, 'gold');
+  print();
+  setButtons([{label:`${icons[event]} Enter`, cls:'primary', action(){ runEvent(event); }}]);
+}
+
+function runEvent(event) {
+  if (event==='combat') {
+    const enemy = getEnemy(G.floor);
+    startCombat(enemy, false);
+  } else if (event==='elite') {
+    const enemy = getEnemy(G.floor+2);
+    print(`\n  💀 ELITE ENCOUNTER. A harder foe lurks here.`, 'red');
+    startCombat(enemy, false, true);
+  } else if (event==='shop') {
+    shopEvent();
+  } else if (event==='rest') {
+    restEvent();
+  } else if (event==='loot') {
+    lootEvent();
+  }
+}
+
+// ─── COMBAT ────────────────────────────────────────────────
+function startCombat(enemy, isBoss, isElite=false) {
+  const p = G.player;
+  G.combat_state = {
+    enemy, isBoss, isElite,
+    round: 0,
+    player_armor_start: p.armor,
+    over: false,
+  };
+  clearOutput();
+  print(`\n  ═══════════════════════════════════════`, isBoss?'boss':'red');
+  print(`  ⚔  ENCOUNTER: ${enemy.name}`, isBoss?'boss':'red');
+  print(`  "${enemy.description}"`, 'dim');
+  print(`  ═══════════════════════════════════════`, isBoss?'boss':'red');
+  print();
+  doCombatRound();
+}
+
+function doCombatRound() {
+  const cs = G.combat_state;
+  const p = G.player;
+  const e = cs.enemy;
+  cs.round++;
+
+  print(`\n  ── Round ${cs.round} ──────────────────────────────`, 'dim');
+  print(`  ${p.name} HP: ${p.hp}/${p.max_hp}  │  ${e.name} [${hpBar(e.hp,e.max_hp)}] ${e.hp}/${e.max_hp}`);
+  updateHUD();
+
+  // Player status effects
+  for (const msg of applyStatusEffects(p)) { print(msg, 'red'); }
+  if (!p.hp) { combatEnd('dead'); return; }
+
+  // Enemy status effects
+  for (const msg of applyStatusEffects(e)) { print(msg, 'dim'); }
+  if (!e.hp) { combatEnd('win'); return; }
+
+  // Player stunned?
+  if (p.status_effects.includes('Stunned')) {
+    p.status_effects = p.status_effects.filter(x=>x!=='Stunned');
+    print(`  💫 You shake off the stun — but lose this turn.`, 'blue');
+    doEnemyTurn();
+    return;
+  }
+
+  showPlayerActions();
+}
+
+function showPlayerActions() {
+  const p = G.player;
+  const e = G.combat_state.enemy;
+  print();
+  print(`  What do you do?`, 'gold');
+  const btns = [
+    {label:`[1] Attack`, cls:'primary', action(){ doAttack(); }}
+  ];
+  p.skills.forEach((sk,i)=>{
+    btns.push({label:`[${i+2}] ${sk.name}`, action(){ doSkill(sk); }});
+  });
+  const usable = p.inventory.filter(it=>it.type==='consumable');
+  if(usable.length) btns.push({label:`[${p.skills.length+2}] Use Item`, cls:'gold', action(){ showItemMenu(usable); }});
+  btns.push({label:`[F] Flee`, action(){ doFlee(); }});
+  setButtons(btns);
+}
+
+function doAttack() {
+  setButtons([]);
+  const p = G.player;
+  const e = G.combat_state.enemy;
+  const base = p._cheat_dmg ? p._cheat_dmg : p.strength + rnd(1,8);
+  const crit = Math.random() < (0.05 + p.agility*0.01);
+  const dmg = crit ? base*2 : base;
+  const dealt = takeDmg(e, dmg);
+  print(`  ⚔  You strike ${e.name} for ${dealt} damage.${crit?' ★ CRITICAL HIT!':''}`, crit?'gold':'');
+  if (!e.hp) { combatEnd('win'); return; }
+  doEnemyTurn();
+}
+
+function doSkill(sk) {
+  setButtons([]);
+  const result = SKILL_FNS[sk.fn](G.player, G.combat_state.enemy);
+  print(result, 'purple');
+  if (!G.combat_state.enemy.hp) { combatEnd('win'); return; }
+  doEnemyTurn();
+}
+
+function showItemMenu(usable) {
+  clearOutput();
+  print(`\n  ── Items ──────────────────────────────`, 'gold');
+  usable.forEach((it,i)=>print(`  [${i+1}] ${it.name} — ${it.desc}`));
+  print(`  [0] Cancel`,'dim');
+  const btns = usable.map((it,i)=>({
+    label:`${it.name}`,
+    cls:'gold',
+    action(){
+      G.player.inventory = G.player.inventory.filter(x=>x!==it);
+      const r = it.use(G.player);
+      clearOutput();
+      print(r, 'green');
+      updateHUD();
+      if (!G.combat_state.enemy.hp) { combatEnd('win'); return; }
+      doEnemyTurn();
+    }
+  }));
+  btns.unshift({label:'← Cancel', action(){ clearOutput(); showPlayerActions(); }});
+  setButtons(btns);
+}
+
+function doFlee() {
+  setButtons([]);
+  const p = G.player;
+  const cs = G.combat_state;
+  const chance = 0.40 + p.agility * 0.02;
+  if (Math.random() < chance) {
+    print(`\n  🏃 NIGERUNDAYO!`, 'green');
+    p.armor = cs.player_armor_start;
+    combatEnd('flee');
+  } else {
+    print(`  ✗ No escape! ${cs.enemy.name} cock blocks you`, 'red');
+    doEnemyTurn();
+  }
+}
+
+function doEnemyTurn() {
+  const p = G.player;
+  const e = G.combat_state.enemy;
+
+  if (e.status_effects.includes('Stunned')) {
+    e.status_effects = e.status_effects.filter(x=>x!=='Stunned');
+    print(`  💫 ${e.name} is stunned — loses their turn.`, 'blue');
+    setButtons([{label:'Continue →', action: doCombatRound}]);
+    return;
+  }
+
+  const rawDmg = enemyAttack(e);
+  const dealt = takeDmg(p, rawDmg);
+  print(`\n  👹 ${e.name} attacks! Deals ${dealt} damage.`, 'red');
+  updateHUD();
+
+  const special = useSpecial(e, p);
+  if (special) print(special, 'red');
+  updateHUD();
+
+  if (!p.hp) { combatEnd('dead'); return; }
+  setButtons([{label:'Continue →', cls:'primary', action: doCombatRound}]);
+}
+
+function combatEnd(result) {
+  const cs = G.combat_state;
+  const p = G.player;
+  p.armor = cs.player_armor_start;
+
+  if (result === 'dead') {
+    showGameOver(); return;
+  }
+  if (result === 'flee') {
+    print(`\n  You escaped.`, 'dim');
+    p.status_effects = p.status_effects.filter(e=>e!=='Stunned');
+    setButtons([{label:'Continue →', action: betweenFloors}]);
+    return;
+  }
+
+  // win
+  print(`\n  ✦ Victory! ${cs.enemy.name} is slain.`, 'gold');
+  const xpG = cs.enemy.xp_reward;
+  const goldG = cs.enemy.gold_reward;
+  p.gold += goldG;
+  print(`  +${xpG} XP   +${goldG} gold`, 'gold');
+
+  const lvl = gainXP(p, xpG);
+  if (lvl) {
+    print(`\n  ★ LEVEL UP! You are now level ${lvl}!`, 'gold2');
+    print(`  Max HP +10, STR +2, AGI +1, ARC +1. Fully healed.`, 'gold2');
+  }
+  p.status_effects = p.status_effects.filter(e=>e!=='Stunned');
+  updateHUD();
+
+  if (cs.isElite) {
+    const loot = randomLoot(1);
+    if (loot.length) {
+      p.inventory.push(loot[0]);
+      print(`\n  📦 Elite loot: ${loot[0].name} — ${loot[0].desc}`, 'green');
+    }
+  }
+
+  if (cs.isBoss) {
+    if (G.floor >= 10) { showVictory(); return; }
+    const loot = randomLoot(2);
+    loot.forEach(item=>{
+      p.inventory.push(item);
+      print(`  📦 Boss loot: ${item.name} — ${item.desc}`, 'green');
+    });
+    p.gold += 20;
+    print(`  💰 +20 gold from the boss's hoard.`, 'gold');
+  }
+
+  setButtons([{label:'Continue →', cls:'primary', action: betweenFloors}]);
+}
+
+function gainXP(p, amount) {
+  p.xp += amount;
+  if (p.xp >= p.xp_next) {
+    p.level++;
+    p.xp -= p.xp_next;
+    p.xp_next = Math.floor(p.xp_next * 1.4);
+    p.max_hp += 10; p.hp = p.max_hp;
+    p.strength += 2; p.agility += 1; p.arcane += 1;
+    return p.level;
+  }
+  return null;
+}
+
+// ─── SHOP ─────────────────────────────────────────────────
+function shopEvent() {
+  clearOutput();
+  const p = G.player;
+  const stock = shopStock();
+  print(`\n  🛒 ── THE BONER MERCHANT ───────────────────────────`, 'gold');
+  print(`  A hunched figure beckons from behind a rotting popeyes sign.`,'dim');
+  print(`  Your gold: ${p.gold}g\n`);
+
+  function renderShop() {
+    clearOutput();
+    print(`\n  🛒 ── THE BONER MERCHANT ───────────────────────────`, 'gold');
+    print(`  Your gold: ${p.gold}g\n`);
+    stock.forEach((it,i)=>print(`  [${i+1}] ${it.name} (${it.value}g) — ${it.desc}`));
+    print(`\n  [0] Leave`, 'dim');
+    const btns = stock.map((it,i)=>({
+      label:`${it.name} (${it.value}g)`,
+      cls: p.gold>=it.value?'gold':'',
+      disabled: p.gold<it.value,
+      action(){
+        if(p.gold<it.value){print(`  ✗ Not enough gold. (Need ${it.value}g, have ${p.gold}g)`,'red');return;}
+        p.gold-=it.value;
+        p.inventory.push(it);
+        print(`  Purchased: ${it.name}. Gold remaining: ${p.gold}g`, 'green');
+        stock.splice(i,1);
+        updateHUD();
+        if(!stock.length){print(`  "Sold out. Move along bitch."`, 'dim');setButtons([{label:'Leave →', action: betweenFloors}]);return;}
+        renderShop();
+      }
+    }));
+    btns.push({label:'Leave →', action: betweenFloors});
+    setButtons(btns);
+  }
+  renderShop();
+}
+
+// ─── REST ─────────────────────────────────────────────────
+function restEvent() {
+  clearOutput();
+  const p = G.player;
+  const restLines = [
+    "  A dying fire.",
+    "  A rare moment of silence. Wonder when MR C will yap again",
+    "  A campfire. cant craft at this one bub.",
+    "  whats up niggatron",
+    "  A warm corner of hell. You take what you can get.",
+  ];
+  print(`\n  🔥 ── REST SITE ──────────────────────────────────────`, 'gold');
+  print(choice(restLines), 'dim');
+  print();
+  const heal_amt = Math.floor(p.max_hp * 0.30);
+  const healed = heal(p, heal_amt);
+  print(`  You tend your wounds. Healed ${healed} HP.`, 'green');
+  print(`  HP: ${p.hp}/${p.max_hp}`);
+  updateHUD();
+
+  if (p.status_effects.length) {
+    print(`\n  Active effects: ${p.status_effects.join(', ')}`, 'red');
+    const btns = p.status_effects.map(ef=>({
+      label:`Remove: ${ef}`,
+      cls:'primary',
+      action(){
+        p.status_effects = p.status_effects.filter(x=>x!==ef);
+        print(`  ${ef} fades in the firelight.`, 'green');
+        updateHUD();
+        setButtons([{label:'Continue →', action: betweenFloors}]);
+      }
+    }));
+    btns.push({label:'Continue →', action: betweenFloors});
+    setButtons(btns);
+  } else {
+    setButtons([{label:'Continue →', action: betweenFloors}]);
+  }
+}
+
+// ─── LOOT ─────────────────────────────────────────────────
+function lootEvent() {
+  clearOutput();
+  const p = G.player;
+  const cacheLines = [
+    "  Hidden beneath a loose stone. Good Jew.",
+    "  A crate with some shitty designer knock off logo written on it.",
+    "  2 gb of RAM. Take what you can get twin",
+    "  Someone left their USB here.",
+    "  gooning",
+  ];
+  print(`\n  📦 ── ABANDONED CACHE ──────────────────────────────`, 'gold');
+  print(choice(cacheLines), 'dim');
+  print();
+  const n = choice([1,1,2]);
+  const loot = randomLoot(n);
+  loot.forEach(item=>{
+    p.inventory.push(item);
+    print(`  Found: ${item.name} — ${item.desc}`, 'green');
+  });
+  const bonus = rnd(0,8);
+  if (bonus) { p.gold+=bonus; print(`  Found ${bonus}g tucked inside.`, 'gold'); }
+  updateHUD();
+  setButtons([{label:'Continue →', action: betweenFloors}]);
+}
+
+// ─── BETWEEN FLOORS ────────────────────────────────────────
+function betweenFloors() {
+  clearOutput();
+  printPlayerStatus();
+  print(`\n  ── What will you do? ───────────────────────────────`, 'gold');
+  setButtons([
+  {label:'▼ Descend Deeper', cls:'primary', action(){G.floor++;runFloor();}},
+  {label:'🎒 Inventory', action: showInventoryMenu},
+  {label:'✦ Skills', action: showSkills},
+  {label:'???', cls:'purple', action: openCheatBox},
+  {label:'← Main Menu', action: showTitle},
+]);
+}
+
+function printPlayerStatus() {
+  const p = G.player;
+  if (!p) return;
+  const bar = hpBar(p.hp, p.max_hp, 20);
+  const effects = p.status_effects.length ? p.status_effects.join(', ') : 'None';
+  print(`\n  ╔══ ${p.name} (${p.class_name}) — Lvl ${p.level} ══╗`, 'gold');
+  print(`  HP  [${bar}] ${p.hp}/${p.max_hp}`);
+  print(`  STR ${p.strength}  AGI ${p.agility}  ARC ${p.arcane}  ARMOR ${p.armor}`);
+  print(`  XP  ${p.xp}/${p.xp_next}   Gold: ${p.gold}g`);
+  print(`  Status: ${effects}`, effects==='None'?'dim':'red');
+}
+
+function showInventoryMenu() {
+  clearOutput();
+  const p = G.player;
+  if (!p.inventory.length) {
+    print(`  YOUR FUCKING BROKE`, 'dim');
+    setButtons([{label:'← Back', action: betweenFloors}]);
+    return;
+  }
+  print(`\n  ┌── Inventory ──────────────────────────`, 'gold');
+  p.inventory.forEach((it,i)=>print(`  │ [${i+1}] ${it.name} — ${it.desc}`));
+  print(`  └───────────────────────────────────────`, 'gold');
+  print();
+  const usable = p.inventory.filter(it=>it.type==='consumable');
+  if (usable.length) {
+    print(`  Consumable items:`, 'dim');
+    const btns = usable.map(it=>({
+      label:`Use: ${it.name}`,
+      cls:'gold',
+      action(){
+        p.inventory = p.inventory.filter(x=>x!==it);
+        const r = it.use(p);
+        clearOutput();
+        print(r, 'green');
+        updateHUD();
+        setButtons([{label:'← Back to Inventory', action: showInventoryMenu},{label:'Continue →', action: betweenFloors}]);
+      }
+    }));
+    btns.push({label:'← Back', action: betweenFloors});
+    setButtons(btns);
+  } else {
+    print(`  No consumable items to use.`, 'dim');
+    setButtons([{label:'← Back', action: betweenFloors}]);
+  }
+}
+
+function showSkills() {
+  clearOutput();
+  const p = G.player;
+  print(`\n  ── Your Skills ─────────────────────────────────────`, 'gold');
+  p.skills.forEach(sk=>{ print(`  ✦ ${sk.name}`, 'gold'); print(`    ${sk.desc}`, 'dim'); });
+  setButtons([{label:'← Back', action: betweenFloors}]);
+}
+
+// ─── END STATES ────────────────────────────────────────────
+function showGameOver() {
+  clearOutput();
+  document.getElementById('hud').classList.remove('active');
+  printRed(`
+  ╔═══════════════════════════════════════════╗
+  ║                                           ║
+  ║         Y O U   H A V E   F A L L E N    ║
+  ║                                           ║
+  ║  yo you suck.                             ║
+  ║  Shah said he could've done it.           ║
+  ║  He could not have done it.               ║
+  ║  Justin Lin is directing your funeral.    ║
+  ║  This WILL get a sequel.                  ║
+  ╚═══════════════════════════════════════════╝`);
+  print();
+  print(`  You reached Floor ${G.floor}.`, 'dim');
+  print(`  Final level: ${G.player.level}`, 'dim');
+  setButtons([
+    {label:'↺ Try Again', cls:'primary', action: startNewGame},
+    {label:'← Main Menu', action: showTitle},
+  ]);
+}
+
+function showVictory() {
+  clearOutput();
+  document.getElementById('hud').classList.remove('active');
+  printGold(`
+  ╔═══════════════════════════════════════════╗
+  ║                                           ║
+  ║    Y O U   E S C A P E D   T H E         ║
+  ║    C R I M S O N   D E P T H S           ║
+  ║                                           ║
+  ║  The light above blinds you.              ║
+  ║  You cannot remember what warmth felt     ║
+  ║  like. But you are alive.                 ║
+  ║  Probably. You could go for popeyes       ║
+  ║                                           ║
+  ╚═══════════════════════════════════════════╝`);
+  print();
+  print(`  Floors cleared: ${G.floor}`, 'gold');
+  print(`  Final level: ${G.player.level}`, 'gold');
+  print(`  Gold remaining: ${G.player.gold}g`, 'gold');
+  setButtons([
+    {label:'↺ Play Again', cls:'primary', action: startNewGame},
+    {label:'← Main Menu', action: showTitle},
+  ]);
+}
+
+// ─── BOOT ──────────────────────────────────────────────────
+showTitle();
+</script>
+</body>
+</html>
